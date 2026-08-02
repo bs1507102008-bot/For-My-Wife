@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>For My Wife</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            background: #FFE4E1;
+            overflow: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #start-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(255, 228, 225, 0.98);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            color: #d11a5b;
+            font-family: sans-serif;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        #start-overlay span {
+            font-size: 14px;
+            color: red;
+            margin-top: 12px;
+            font-weight: normal;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="start-overlay" onclick="startExperience()">
+        ❤️ Tap to Open ❤️
+        <span>(पत्नी जी)</span>
+    </div>
+
+    <audio id="bg-music" src="song.mp3" loop preload="auto"></audio>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            initHoneycomb();
+        }
+        window.addEventListener('resize', resize);
+
+        const wifePhoto = new Image();
+        wifePhoto.src = 'photo.jpg';
+
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789♥💖✨';
+        const fontSize = 14;
+        let columns, drops;
+
+        function initMatrix() {
+            columns = Math.floor(width / fontSize);
+            drops = Array(columns).fill(1);
+        }
+
+        function drawMatrix() {
+            ctx.fillStyle = 'rgba(255, 228, 225, 0.25)';
+            ctx.fillRect(0, 0, width, height);
+            ctx.fillStyle = '#ff2a8d';
+            ctx.font = fontSize + 'px monospace';
+            for (let i = 0; i < drops.length; i++) {
+                const text = chars[Math.floor(Math.random() * chars.length)];
+                ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                if (drops[i] * fontSize > height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            }
+        }
+
+        class Particle {
+            constructor(x, y) {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.targetX = x;
+                this.targetY = y;
+                this.size = 2.5;
+                this.speed = 0.15; // Fast and sharp movement
+            }
+            update() {
+                this.x += (this.targetX - this.x) * this.speed;
+                this.y += (this.targetY - this.y) * this.speed;
+            }
+            draw() {
+                // Crisp, Sharp Solid Particles without Blur
+                ctx.fillStyle = '#FF1493';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function getPointsFromText(text, isHeart = false) {
+            const offCanvas = document.createElement('canvas');
+            const offCtx = offCanvas.getContext('2d');
+            offCanvas.width = width;
+            offCanvas.height = height;
+            offCtx.fillStyle = '#ffffff';
+            
+            if (isHeart) {
+                // High precision Heart outline for sharp shape
+                const scale = Math.min(width, height) / 30;
+                offCtx.save();
+                offCtx.translate(width / 2, height / 2 - 20);
+                offCtx.beginPath();
+                for (let t = 0; t < Math.PI * 2; t += 0.005) {
+                    const x = 16 * Math.pow(Math.sin(t), 3);
+                    const y = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+                    if (t === 0) offCtx.moveTo(x * scale, y * scale);
+                    else offCtx.lineTo(x * scale, y * scale);
+                }
+                offCtx.fill();
+                offCtx.restore();
+            } else {
+                offCtx.textAlign = 'center';
+                offCtx.textBaseline = 'middle';
+                const isMobile = width < 600;
+                const dynamicFontSize = isMobile ? Math.min(width, height) / 4.5 : Math.min(width, height) / 3.5;
+                offCtx.font = `bold ${dynamicFontSize}px sans-serif`;
+                offCtx.fillText(text, width / 2, height / 2);
+            }
+            
+            const imageData = offCtx.getImageData(0, 0, width, height).data;
+            const points = [];
+            // Step size heart ke liye denser (5) rakha gaya hai taaki heart ekdam saaf bane
+            const step = isHeart ? 5 : (width < 600 ? 7 : 8);
+            
+            for (let y = 0; y < height; y += step) {
+                for (let x = 0; x < width; x += step) {
+                    const index = (y * width + x) * 4;
+                    if (imageData[index + 3] > 128) {
+                        points.push({ x, y });
+                    }
+                }
+            }
+            return points;
+        }
+
+        const sequence = ['3', '2', '1', 'I', 'Love', 'You', 'My', 'Darling', 'HEART'];
+        let particles = [];
+        let currentState = 'PARTICLES';
+        let honeycombProgress = 0;
+
+        let hexRadius = 35;
+        let hexagons = [];
+
+        function initHoneycomb() {
+            hexagons = [];
+            const hexWidth = Math.sqrt(3) * hexRadius;
+            const hexHeight = 2 * hexRadius;
+            const cols = Math.ceil(width / hexWidth) + 2;
+            const rows = Math.ceil(height / (hexHeight * 0.75)) + 2;
+
+            for (let r = -1; r < rows; r++) {
+                for (let c = -1; c < cols; c++) {
+                    let x = c * hexWidth;
+                    let y = r * (hexHeight * 0.75);
+                    if (r % 2 !== 0) {
+                        x += hexWidth / 2;
+                    }
+                    const distFromCenter = Math.hypot(x - width/2, y - height/2);
+                    hexagons.push({
+                        x, y,
+                        delay: distFromCenter * 1.5
+                    });
+                }
+            }
+        }
+
+        function drawHexagonPath(ctx, x, y, radius) {
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const angle = (Math.PI / 3) * i - Math.PI / 6;
+                const hx = x + radius * Math.cos(angle);
+                const hy = y + radius * Math.sin(angle);
+                if (i === 0) ctx.moveTo(hx, hy);
+                else ctx.lineTo(hx, hy);
+            }
+            ctx.closePath();
+        }
+
+        function drawHoneycombFullScreenPhoto() {
+            if (!wifePhoto.complete || wifePhoto.naturalWidth === 0) return;
+
+            honeycombProgress += 18;
+
+            const imgRatio = wifePhoto.width / wifePhoto.height;
+            const screenRatio = width / height;
+            let drawW, drawH, offsetX, offsetY;
+
+            if (screenRatio > imgRatio) {
+                drawW = width;
+                drawH = width / imgRatio;
+            } else {
+                drawH = height;
+                drawW = height * imgRatio;
+            }
+            offsetX = (width - drawW) / 2;
+            offsetY = (height - drawH) / 2;
+
+            hexagons.forEach(hex => {
+                let currentScale = 0;
+                if (honeycombProgress > hex.delay) {
+                    currentScale = Math.min(1, (honeycombProgress - hex.delay) / 350);
+                }
+
+                if (currentScale > 0) {
+                    ctx.save();
+                    drawHexagonPath(ctx, hex.x, hex.y, (hexRadius + 0.5) * currentScale);
+                    ctx.clip();
+                    ctx.drawImage(wifePhoto, offsetX, offsetY, drawW, drawH);
+                    ctx.restore();
+                }
+            });
+
+            if (honeycombProgress > 3000) {
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const fontSizeInside = Math.min(width, height) / 10;
+                ctx.font = `italic bold ${fontSizeInside}px "Georgia", serif`;
+                ctx.fillStyle = '#FFFFFF';
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = '#d11a5b';
+                ctx.fillText("Radhe Radhe", width / 2, height / 2);
+                ctx.restore();
+            }
+        }
+
+        function setStepPoints(stepIndex) {
+            const isHeart = sequence[stepIndex] === 'HEART';
+            const targetPoints = getPointsFromText(sequence[stepIndex], isHeart);
+            
+            while (particles.length < targetPoints.length) {
+                particles.push(new Particle(width / 2, height / 2));
+            }
+            if (particles.length > targetPoints.length) {
+                particles.splice(targetPoints.length);
+            }
+            
+            const shuffledPoints = [...targetPoints].sort(() => Math.random() - 0.5);
+            for (let i = 0; i < particles.length; i++) {
+                particles[i].targetX = shuffledPoints[i].x;
+                particles[i].targetY = shuffledPoints[i].y;
+            }
+        }
+
+        // Extended timings handler (Even longer durations)
+        async function runSequence() {
+            for (let i = 0; i < sequence.length; i++) {
+                setStepPoints(i);
+                
+                if (sequence[i] === 'HEART') {
+                    // Dil (HEART) ab 8 seconds tak screen par rahega
+                    await new Promise(resolve => setTimeout(resolve, 8000));
+                } else {
+                    // Har text step ab 4.5 seconds tak rahega
+                    await new Promise(resolve => setTimeout(resolve, 4500));
+                }
+            }
+            
+            currentState = 'HONEYCOMB';
+        }
+
+        function startExperience() {
+            document.getElementById('start-overlay').style.display = 'none';
+            document.getElementById('bg-music').play().catch(e => console.log("Audio play error:", e));
+            
+            resize();
+            initMatrix();
+            runSequence();
+            animate();
+        }
+
+        function animate() {
+            if (currentState === 'PARTICLES') {
+                drawMatrix();
+                for (let i = 0; i < particles.length; i++) {
+                    particles[i].update();
+                    particles[i].draw();
+                }
+            } else if (currentState === 'HONEYCOMB') {
+                ctx.clearRect(0, 0, width, height);
+                drawHoneycombFullScreenPhoto();
+            }
+            
+            requestAnimationFrame(animate);
+        }
+    </script>
+</body>
+</html>
